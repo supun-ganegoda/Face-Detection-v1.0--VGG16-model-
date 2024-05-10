@@ -1,0 +1,6 @@
+# Required libraries
+labelme
+tensorflow
+opencv
+matplotlib
+albumentations
