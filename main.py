@@ -35,15 +35,16 @@ def limitGPU():
         tf.config.experimental.set_memory_growth(gpu, True)
     print('GPU :',tf.config.experimental.list_physical_devices('GPU'))
 
+# Tensor flow image loading function
+def load_image(x):
+        byteImg = tf.io.read_file(x)
+        img = tf.io.decode_jpeg(byteImg)
+        return img
+
 # Define the image loading function
 def loadSampleImages():
     images = tf.data.Dataset.list_files('data\\faces\\*.jpg', shuffle=False)
     print('First loaded image', images.as_numpy_iterator().next())
-
-    def load_image(x):
-        byteImg = tf.io.read_file(x)
-        img = tf.io.decode_jpeg(byteImg)
-        return img
 
     images = images.map(load_image)
     print('First tensorFlow transformed image', images.as_numpy_iterator().next())
@@ -53,7 +54,6 @@ def loadSampleImages():
     for idx, image in enumerate(imageGenerator.next()):
         ax[idx].imshow(image)
     plt.show()
-    return images
 
 # Splitting the dataset
 def dataSplit():
@@ -140,6 +140,17 @@ def generateAugmentedData():
             except Exception as e:
                 print(e)
 
+# Pre-process images 
+def preProcessImage(image):
+    image = tf.image.resize(image, (120, 120))
+    image = image / 255.0  # Normalize pixel values to [0, 1]
+    return image
+
+# Label loading function for the tensor-flow
+def labelLoading(path):
+    with open(path.numpy(), 'r', encoding='utf-8') as f:
+        label = json.load(f)
+    return [label['class'], label['bbox']]
 
 # Defining the main function
 def main(): 
@@ -147,10 +158,45 @@ def main():
 
     # following needs to run once ------------------
     # collectImageSamples()
-    # images = loadSampleImages()
+    # loadSampleImages()
     # dataSplit()
-    generateAugmentedData()
+    # generateAugmentedData()
     # ----------------------------------------------
+
+    # Load data into tensor-flow dataset
+    def loadAndPreProcessImages(img):
+        return preProcessImage(load_image(img))
+    
+    dataDirs = ['data\\augData\\train\\faces\\', 'data\\augData\\test\\faces\\', 'data\\augData\\val\\faces\\']
+    labelDirs = ['data\\augData\\train\\labels\\', 'data\\augData\\test\\labels\\', 'data\\augData\\val\\labels\\']
+    datasets = []
+    labelSets = []
+
+    # Loop over directories
+    for dataDir in dataDirs:
+        # Load files from directory
+        dataset = tf.data.Dataset.list_files(dataDir + '*.jpg', shuffle=False)
+        # Map loading and preprocessing function
+        dataset = dataset.map(loadAndPreProcessImages)
+        datasets.append(dataset)
+
+    # Split into train, test, and val datasets
+    trainFaces, testFaces, valFaces = datasets
+
+    # Load labels to tensorflow pipeline
+    for labelDir in labelDirs:
+        labelSet = tf.data.Dataset.list_files(labelDir+ '*.json', shuffle=False)
+        labelSet = labelSet.map(lambda x: tf.py_function(labelLoading, [x], [tf.uint8, tf.float16]))
+        labelSets.append(labelSet)
+    
+    # Split into train, test, and val datasets
+    trainLabels, testLabels, valLabels = labelSets
+
+    # Printing the pipeline results
+    print('Train set: ', len(trainFaces), ' Labels: ',len(trainLabels))
+    print('Test set: ', len(testFaces), ' Labels: ',len(testLabels))
+    print('Val set: ', len(valFaces), ' Labels: ',len(valLabels))
+
   
   
 if __name__=="__main__": 
