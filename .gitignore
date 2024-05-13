@@ -1,2 +1,5 @@
 /data/faces
 /data/labels
+/data/test
+/data/train
+/data/val
