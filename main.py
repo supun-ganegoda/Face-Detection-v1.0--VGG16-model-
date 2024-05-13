@@ -6,11 +6,10 @@ import numpy as np
 from matplotlib import pyplot as plt
 import albumentations as alb
 
-imageSource = os.path.join('data', 'faces')
-sampleImageCount = 30
-
 # Collect image samples 
 def collectImageSamples():
+    imageSource = os.path.join('data', 'faces')
+    sampleImageCount = 30
     cap = cv2.VideoCapture(0)
     for img in range(sampleImageCount):
         ret, frame = cap.read()
@@ -133,7 +132,7 @@ def generateAugmentedData():
                             annotation['class'] = 1
                     else:
                         annotation['bbox'] = [0,0,0,0]
-                        annotation['bbox'] = [0,0,0,0]
+                        annotation['class'] = 0
                     
                     with open(os.path.join('data','augData', partition, 'labels', f'{image.split(".")[0]}.{x}.json'), 'w') as f:
                         json.dump(annotation, f)
@@ -147,16 +146,18 @@ def preProcessImage(image):
     return image
 
 # Label loading function for the tensor-flow
-def labelLoading(path):
-    with open(path.numpy(), 'r', encoding='utf-8') as f:
+def load_labels(label_path):
+    with open(label_path.numpy(), 'r', encoding = "utf-8") as f:
         label = json.load(f)
-    return [label['class'], label['bbox']]
+        
+    return [label['class']], label['bbox']
 
 # Defining the main function
 def main(): 
     limitGPU()
 
     # following needs to run once ------------------
+
     # collectImageSamples()
     # loadSampleImages()
     # dataSplit()
@@ -183,21 +184,35 @@ def main():
     # Split into train, test, and val datasets
     trainFaces, testFaces, valFaces = datasets
 
+    
     # Load labels to tensorflow pipeline
     for labelDir in labelDirs:
         labelSet = tf.data.Dataset.list_files(labelDir+ '*.json', shuffle=False)
-        labelSet = labelSet.map(lambda x: tf.py_function(labelLoading, [x], [tf.uint8, tf.float16]))
+        labelSet = labelSet.map(lambda x: tf.py_function(load_labels, [x], [tf.uint8, tf.float16]))
         labelSets.append(labelSet)
     
     # Split into train, test, and val datasets
     trainLabels, testLabels, valLabels = labelSets
-
+    
     # Printing the pipeline results
     print('Train set: ', len(trainFaces), ' Labels: ',len(trainLabels))
     print('Test set: ', len(testFaces), ' Labels: ',len(testLabels))
     print('Val set: ', len(valFaces), ' Labels: ',len(valLabels))
+    
+    
+    # Generate final dataset
+    trainFaces = tf.data.Dataset.zip((trainFaces, trainLabels))
+    trainFaces = trainFaces.shuffle(5000).batch(8).prefetch(4)
+    testFaces = tf.data.Dataset.zip((testFaces, testLabels))
+    testFaces = testFaces.shuffle(5000).batch(8).prefetch(4)
+    valFaces = tf.data.Dataset.zip((valFaces, valLabels))
+    valFaces = valFaces.shuffle(5000).batch(8).prefetch(4)
 
-  
+    # Visualize the final data samples
+    res = trainFaces.as_numpy_iterator().next()
+    print(res)
+    
+    
   
 if __name__=="__main__": 
     main() 
