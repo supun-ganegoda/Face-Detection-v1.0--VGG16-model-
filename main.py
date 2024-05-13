@@ -8,6 +8,7 @@ import albumentations as alb
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Conv2D, Dense, GlobalMaxPooling2D
 from tensorflow.keras.applications import VGG16
+from face_recognizer import FaceRecognizer
 
 # Collect image samples 
 def collectImageSamples():
@@ -274,6 +275,9 @@ def main():
     # Initialize the loss functions
     classLoss = tf.keras.losses.BinaryCrossentropy()
     regressLoss = localizationLoss
+
+    model = FaceRecognizer(faceRecognizer)
+    model.compile(opt,classLoss, regressLoss)
 
     
     
