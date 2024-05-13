@@ -5,6 +5,9 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from matplotlib import pyplot as plt
 import albumentations as alb
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Conv2D, Dense, GlobalMaxPooling2D
+from tensorflow.keras.applications import VGG16
 
 # Collect image samples 
 def collectImageSamples():
@@ -152,6 +155,40 @@ def load_labels(label_path):
         
     return [label['class']], label['bbox']
 
+# Develop the model
+def buildModel():
+    # vgg = VGG16(include_top = False)
+    # print(vgg.summary())
+
+    inputLayer = Input(shape=(120,120,3))
+    vgg = VGG16(include_top=False)(inputLayer)
+
+    f1 = GlobalMaxPooling2D()(vgg)
+    class1 = Dense(2048, activation = 'relu')(f1)
+    class2 = Dense(1, activation = 'sigmoid')(class1)
+
+    f2 = GlobalMaxPooling2D()(vgg)
+    regress1 = Dense(2048, activation = 'relu')(f2)
+    regress2 = Dense(4, activation = 'sigmoid')(regress1)
+
+    faceRecognizer = Model(inputs=inputLayer, outputs=[class2, regress2])
+    return faceRecognizer
+
+# Calculate localization lost
+def localizationLoss(yTrue, yHat):
+    delta_coord = tf.reduce_sum(tf.square(yTrue[:,:2] - yHat[:,:2]))
+                  
+    h_true = yTrue[:,3] - yTrue[:,1] 
+    w_true = yTrue[:,2] - yTrue[:,0] 
+
+    h_pred = yHat[:,3] - yHat[:,1] 
+    w_pred = yHat[:,2] - yHat[:,0] 
+    
+    delta_size = tf.reduce_sum(tf.square(w_true - w_pred) + tf.square(h_true-h_pred))
+    
+    return delta_coord + delta_size
+
+
 # Defining the main function
 def main(): 
     limitGPU()
@@ -224,6 +261,19 @@ def main():
 
         ax[idx].imshow(cv2.UMat.get(sample_image_umat))
     plt.show()
+
+    # Building the neural network ----------------------
+    faceRecognizer = buildModel()
+    print(faceRecognizer.summary())
+
+    # Define the optimizers and losses
+    batchesPerEpoch = len(trainFaces)
+    lrDecay = (1./0.75 - 1)/batchesPerEpoch
+    opt = tf.keras.optimizers.Adam(learning_rate = 0.0001, decay = lrDecay)
+
+    # Initialize the loss functions
+    classLoss = tf.keras.losses.BinaryCrossentropy()
+    regressLoss = localizationLoss
 
     
     
