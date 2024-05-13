@@ -4,6 +4,7 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 import numpy as np
 from matplotlib import pyplot as plt
+import albumentations as alb
 
 imageSource = os.path.join('data', 'faces')
 sampleImageCount = 30
@@ -84,12 +85,72 @@ def dataSplit():
                 newFilePath = os.path.join('data',folder,'labels',fileName)
                 os.replace(extFilePath, newFilePath)
 
+def generateAugmentedData():
+    augmenter = alb.Compose([alb.RandomCrop(width=450, height=450),
+                 alb.HorizontalFlip(p=0.5),
+                 alb.RandomBrightnessContrast(p=0.2),
+                 alb.RandomGamma(p=0.2),
+                 alb.RGBShift(p=0.2),
+                 alb.VerticalFlip(p=0.5)],
+                 bbox_params=alb.BboxParams(format='albumentations', label_fields=['class_labels']))
+
+    os.makedirs('data/augData/train/faces', exist_ok=True)
+    os.makedirs('data/augData/val/faces', exist_ok=True)
+    os.makedirs('data/augData/test/faces', exist_ok=True)
+    os.makedirs('data/augData/train/labels', exist_ok=True)
+    os.makedirs('data/augData/val/labels', exist_ok=True)
+    os.makedirs('data/augData/test/labels', exist_ok=True)
+
+    for partition in ['train', 'test', 'val']:
+        for image in os.listdir(os.path.join('data',partition,'faces')):
+            img = cv2.imread(os.path.join('data',partition,'faces',image))
+
+            coords = [0,0,0.00001,0.00001]
+            labelPath = os.path.join('data', partition,'labels',f'{image.split(".")[0]}.json')
+            if os.path.exists(labelPath):
+                with open(labelPath, 'r') as f:
+                    label = json.load(f)
+
+                    coords[0] = label['shapes'][0]['points'][0][0]
+                    coords[1] = label['shapes'][0]['points'][0][1]
+                    coords[2] = label['shapes'][0]['points'][1][0]
+                    coords[3] = label['shapes'][0]['points'][1][1]
+                    coords = list(np.divide(coords, [640,480,640,480]))
+            try:
+                for x in range(60):
+                    augmented = augmenter(image=img, bboxes=[coords], class_labels=['face'])
+                    cv2.imwrite(os.path.join('data','augData',partition,'faces',f'{image.split(".")[0]}.{x}.jpg'),augmented['image'])
+
+                    annotation = {}
+                    annotation['image'] = image
+
+                    if os.path.exists(labelPath):
+                        if len(augmented['bboxes']) == 0:
+                            annotation['bbox'] = [0,0,0,0]
+                            annotation['class'] = 0
+                        else:
+                            annotation['bbox'] = augmented['bboxes'][0]
+                            annotation['class'] = 1
+                    else:
+                        annotation['bbox'] = [0,0,0,0]
+                        annotation['bbox'] = [0,0,0,0]
+                    
+                    with open(os.path.join('data','augData', partition, 'labels', f'{image.split(".")[0]}.{x}.json'), 'w') as f:
+                        json.dump(annotation, f)
+            except Exception as e:
+                print(e)
+
+
 # Defining the main function
 def main(): 
-    # collectImageSamples()
     limitGPU()
-    images = loadSampleImages()
-    dataSplit()
+
+    # following needs to run once ------------------
+    # collectImageSamples()
+    # images = loadSampleImages()
+    # dataSplit()
+    generateAugmentedData()
+    # ----------------------------------------------
   
   
 if __name__=="__main__": 
