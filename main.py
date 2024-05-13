@@ -210,7 +210,21 @@ def main():
 
     # Visualize the final data samples
     res = trainFaces.as_numpy_iterator().next()
-    print(res)
+
+    fig, ax = plt.subplots(ncols=4, figsize=(20,20))
+    for idx in range(4): 
+        sample_image = res[0][idx]
+        sample_coords = res[1][1][idx]
+        sample_image_umat = cv2.UMat(sample_image)
+
+        cv2.rectangle(sample_image_umat, 
+                    tuple(np.multiply(sample_coords[:2], [120,120]).astype(int)),
+                    tuple(np.multiply(sample_coords[2:], [120,120]).astype(int)), 
+                            (255,0,0), 2)
+
+        ax[idx].imshow(cv2.UMat.get(sample_image_umat))
+    plt.show()
+
     
     
   
