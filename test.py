@@ -1,5 +1,4 @@
 from tensorflow.keras.models import load_model
-import matplotlib.pyplot as plt
 import cv2
 import numpy as np
 
