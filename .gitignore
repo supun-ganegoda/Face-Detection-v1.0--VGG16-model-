@@ -5,3 +5,5 @@
 /data/val
 /data/augData
 /__pycache__
+/logdir
+/temp.txt

@@ -5,8 +5,8 @@ from sklearn.model_selection import train_test_split
 import numpy as np
 from matplotlib import pyplot as plt
 import albumentations as alb
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Conv2D, Dense, GlobalMaxPooling2D
+from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.layers import Input, Dense, GlobalMaxPooling2D
 from tensorflow.keras.applications import VGG16
 from face_recognizer import FaceRecognizer
 
@@ -161,19 +161,22 @@ def buildModel():
     # vgg = VGG16(include_top = False)
     # print(vgg.summary())
 
-    inputLayer = Input(shape=(120,120,3))
-    vgg = VGG16(include_top=False)(inputLayer)
+    input_layer = Input(shape=(120,120,3))
+    
+    vgg = VGG16(include_top=False)(input_layer)
 
+    # Classification Model  
     f1 = GlobalMaxPooling2D()(vgg)
-    class1 = Dense(2048, activation = 'relu')(f1)
-    class2 = Dense(1, activation = 'sigmoid')(class1)
-
+    class1 = Dense(2048, activation='relu')(f1)
+    class2 = Dense(1, activation='sigmoid')(class1)
+    
+    # Bounding box model
     f2 = GlobalMaxPooling2D()(vgg)
-    regress1 = Dense(2048, activation = 'relu')(f2)
-    regress2 = Dense(4, activation = 'sigmoid')(regress1)
-
-    faceRecognizer = Model(inputs=inputLayer, outputs=[class2, regress2])
-    return faceRecognizer
+    regress1 = Dense(2048, activation='relu')(f2)
+    regress2 = Dense(4, activation='sigmoid')(regress1)
+    
+    facetracker = Model(inputs=input_layer, outputs=[class2, regress2])
+    return facetracker
 
 # Calculate localization lost
 def localizationLoss(yTrue, yHat):
@@ -189,10 +192,22 @@ def localizationLoss(yTrue, yHat):
     
     return delta_coord + delta_size
 
+# Generate performance graphs
+def generateGraphs(hist):
+    print(hist.history['loss'])  # Print training loss
+    print(hist.history['val_loss'])  # Print validation loss
+    fig, ax = plt.subplots(figsize=(20, 5))
+
+    ax.plot(hist.history['loss'], color='teal', label='training loss')
+    ax.plot(hist.history['val_loss'], color='orange', label='validation loss')
+    ax.set_title('Training / Validation Loss')
+    ax.legend()
+
+    plt.show()
 
 # Defining the main function
 def main(): 
-    limitGPU()
+    #limitGPU()
 
     # following needs to run once ------------------
 
@@ -239,15 +254,15 @@ def main():
     
     
     # Generate final dataset
-    trainFaces = tf.data.Dataset.zip((trainFaces, trainLabels))
-    trainFaces = trainFaces.shuffle(5000).batch(8).prefetch(4)
-    testFaces = tf.data.Dataset.zip((testFaces, testLabels))
-    testFaces = testFaces.shuffle(5000).batch(8).prefetch(4)
-    valFaces = tf.data.Dataset.zip((valFaces, valLabels))
-    valFaces = valFaces.shuffle(5000).batch(8).prefetch(4)
+    train = tf.data.Dataset.zip((trainFaces, trainLabels))
+    train = train.shuffle(5000).batch(10).prefetch(4)
+    test = tf.data.Dataset.zip((testFaces, testLabels))
+    test = test.shuffle(5000).batch(10).prefetch(4)
+    val = tf.data.Dataset.zip((valFaces, valLabels))
+    val = val.shuffle(5000).batch(10).prefetch(4)
 
     # Visualize the final data samples
-    res = trainFaces.as_numpy_iterator().next()
+    res = train.as_numpy_iterator().next()
 
     fig, ax = plt.subplots(ncols=4, figsize=(20,20))
     for idx in range(4): 
@@ -268,18 +283,29 @@ def main():
     print(faceRecognizer.summary())
 
     # Define the optimizers and losses
-    batchesPerEpoch = len(trainFaces)
+    batchesPerEpoch = len(train)
     lrDecay = (1./0.75 - 1)/batchesPerEpoch
     opt = tf.keras.optimizers.Adam(learning_rate = 0.0001, decay = lrDecay)
 
     # Initialize the loss functions
-    classLoss = tf.keras.losses.BinaryCrossentropy()
-    regressLoss = localizationLoss
+    classloss = tf.keras.losses.BinaryCrossentropy()
+    regressloss = localizationLoss
 
-    model = FaceRecognizer(faceRecognizer)
-    model.compile(opt,classLoss, regressLoss)
+    # Initialize the custom model
+    model = FaceRecognizer(faceRec=faceRecognizer)
+    model.compile(opt=opt, classloss=classloss, localizationloss=regressloss)
 
+    # Train the model
+    logDir = 'logdir'
+    tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=logDir)
+    hist = model.fit(train, epochs=5, validation_data=val, callbacks=[tensorboard_callback])
     
+    # Plot the performance 
+    generateGraphs(hist)
+
+    # Save the model
+    faceRecognizer.save('faceRecognizer_epoch_5.keras')
+
     
   
 if __name__=="__main__": 
